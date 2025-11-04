@@ -1,0 +1,89 @@
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  background: #0f0f0f;
+  border-bottom: 1px solid #333;
+  flex-shrink: 0;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #00d9ff;
+  margin: 0;
+}
+
+.tagline {
+  font-size: 0.875rem;
+  color: #888;
+  border-left: 1px solid #333;
+  padding-left: 1rem;
+}
+
+.topbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.btn:hover {
+  background: #3a3a3a;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: #00d9ff;
+  color: #000;
+}
+
+.btn-primary:hover {
+  background: #00c4e6;
+}
+
+.btn-success {
+  background: #00cc66;
+  color: #000;
+}
+
+.btn-success:hover {
+  background: #00b359;
+}
+
+.btn-danger {
+  background: #ff4444;
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: #e63939;
+}
+
+.separator {
+  width: 1px;
+  height: 24px;
+  background: #333;
+  margin: 0 0.25rem;
+}

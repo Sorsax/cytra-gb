@@ -1,0 +1,56 @@
+.emulator-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  background: #1a1a1a;
+}
+
+.screen-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border: 4px solid #333;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  padding: 1rem;
+}
+
+.game-canvas {
+  width: 640px;
+  height: 576px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.controls-hint {
+  color: #888;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.controls-hint p {
+  margin: 0;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .game-canvas {
+    width: 480px;
+    height: 432px;
+  }
+}
+
+@media (max-width: 576px) {
+  .game-canvas {
+    width: 320px;
+    height: 288px;
+  }
+  
+  .screen-container {
+    padding: 0.5rem;
+  }
+}
