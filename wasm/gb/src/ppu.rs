@@ -257,13 +257,16 @@ impl PPU {
         let tile_data_base: u16 = if lcdc & 0x10 != 0 { 0x8000 } else { 0x8800 };
         let signed_tile_data = (lcdc & 0x10) == 0;
 
-        let window_y = ly - wy;
+        let window_y = ly.wrapping_sub(wy);
         let tile_y = ((window_y >> 3) & 31) as u16;
 
-        for x in 0..SCREEN_WIDTH {
-            let window_x = x as i16 - (wx as i16 - 7);
-            if window_x < 0 { continue; }
-            let window_x = window_x as u8;
+        // Compute window start position (WX-7); if WX>=167, window is off-screen
+        let win_start_x = (wx as i16).wrapping_sub(7) as i16;
+        if win_start_x >= SCREEN_WIDTH as i16 { return; }
+
+        let start_x = win_start_x.max(0) as usize;
+        for x in start_x..SCREEN_WIDTH {
+            let window_x = (x as i16 - win_start_x) as u8;
 
             let tile_x = ((window_x >> 3) & 31) as u16;
             let tile_index = tile_y * 32 + tile_x;
