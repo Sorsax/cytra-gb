@@ -68,6 +68,22 @@ export class WasmGameBoy {
       // Copy out latest framebuffer to keep a stable view for canvas
       const ptr = this.core.frame_buffer_ptr();
       const len = this.core.frame_buffer_len();
+      
+      // Validate framebuffer dimensions
+      const expectedLen = 160 * 144 * 4;
+      if (len !== expectedLen) {
+        console.error(`Framebuffer size mismatch: expected ${expectedLen}, got ${len}`);
+        this.disposed = true;
+        return false;
+      }
+      
+      // Check if pointer is within valid memory range
+      if (ptr < 0 || ptr + len > this.memory.buffer.byteLength) {
+        console.error(`Framebuffer pointer out of bounds: ptr=${ptr}, len=${len}, memory=${this.memory.buffer.byteLength}`);
+        this.disposed = true;
+        return false;
+      }
+      
       const bytes = new Uint8Array(this.memory.buffer, ptr, len);
       this.fb.set(bytes);
 
