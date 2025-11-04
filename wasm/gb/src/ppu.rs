@@ -133,9 +133,8 @@ impl PPU {
             self.frame_buffer[offset + 3] = 255;
         }
 
-        // BG
-        // TEMPORARY: Disable all rendering to isolate CPU vs PPU corruption
-        if false && lcdc & 0x01 != 0 {
+        // BG (re-enabled for isolation test)
+        if lcdc & 0x01 != 0 {
             self.render_background(mmu, ly);
         }
 
