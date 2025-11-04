@@ -38,6 +38,17 @@ impl PPU {
         &self.frame_buffer
     }
 
+    #[inline]
+    fn set_pixel_rgb(&mut self, ly: u8, x: usize, rgb: [u8; 3]) {
+        let idx = (ly as usize * SCREEN_WIDTH + x) * 4;
+        if idx + 3 < self.frame_buffer.len() {
+            self.frame_buffer[idx] = rgb[0];
+            self.frame_buffer[idx + 1] = rgb[1];
+            self.frame_buffer[idx + 2] = rgb[2];
+            self.frame_buffer[idx + 3] = 255;
+        }
+    }
+
     // Step PPU; return true when a frame is ready
     pub fn step(&mut self, mmu: &mut MMU, cycles: u32) -> bool {
         let lcdc = mmu.get_io()[0x40];
@@ -100,10 +111,12 @@ impl PPU {
         let line_start = ly as usize * SCREEN_WIDTH * 4;
         for x in 0..SCREEN_WIDTH {
             let offset = line_start + x * 4;
-            self.frame_buffer[offset] = 255;
-            self.frame_buffer[offset + 1] = 255;
-            self.frame_buffer[offset + 2] = 255;
-            self.frame_buffer[offset + 3] = 255;
+            if offset + 3 < self.frame_buffer.len() {
+                self.frame_buffer[offset] = 255;
+                self.frame_buffer[offset + 1] = 255;
+                self.frame_buffer[offset + 2] = 255;
+                self.frame_buffer[offset + 3] = 255;
+            }
         }
 
         // BG
@@ -164,11 +177,7 @@ impl PPU {
 
             // Convert to RGB
             let rgb = self.get_color(color);
-            let offset = (ly as usize * SCREEN_WIDTH + x) * 4;
-            self.frame_buffer[offset] = rgb[0];
-            self.frame_buffer[offset + 1] = rgb[1];
-            self.frame_buffer[offset + 2] = rgb[2];
-            self.frame_buffer[offset + 3] = 255;
+            self.set_pixel_rgb(ly, x, rgb);
         }
     }
 
@@ -218,11 +227,7 @@ impl PPU {
             let color = (bgp >> (color_num * 2)) & 0x03;
 
             let rgb = self.get_color(color);
-            let offset = (ly as usize * SCREEN_WIDTH + x) * 4;
-            self.frame_buffer[offset] = rgb[0];
-            self.frame_buffer[offset + 1] = rgb[1];
-            self.frame_buffer[offset + 2] = rgb[2];
-            self.frame_buffer[offset + 3] = 255;
+            self.set_pixel_rgb(ly, x, rgb);
         }
     }
 
@@ -306,11 +311,7 @@ impl PPU {
 
                 let color = (palette >> (color_num * 2)) & 0x03;
                 let rgb = self.get_color(color);
-                let offset = (ly as usize * SCREEN_WIDTH + screen_x) * 4;
-                self.frame_buffer[offset] = rgb[0];
-                self.frame_buffer[offset + 1] = rgb[1];
-                self.frame_buffer[offset + 2] = rgb[2];
-                self.frame_buffer[offset + 3] = 255;
+                self.set_pixel_rgb(ly, screen_x, rgb);
             }
         }
     }

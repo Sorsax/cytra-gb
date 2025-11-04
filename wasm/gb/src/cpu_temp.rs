@@ -1,15 +1,6 @@
-// Complete Rust CPU implementation will be created in parts
-// This is a placeholder - will be replaced with full implementation
-pub struct Cpu {
-    pub cycles: u32,
-}
+//! NOTE: This file is a legacy placeholder and is NOT used.
+//! The actual CPU implementation lives inside `lib.rs` within the `GameBoy` core.
+//! It’s kept only to avoid breaking references during refactors. Safe to delete once confirmed.
 
-impl Cpu {
-    pub fn new() -> Self {
-        Cpu { cycles: 0 }
-    }
-    
-    pub fn step(&mut self) -> u32 {
-        4
-    }
-}
+#[allow(dead_code)]
+pub struct CpuPlaceholder;
