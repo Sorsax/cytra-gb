@@ -25,6 +25,12 @@ pub struct MMU {
     cgb_obj_palette_data: [u8; 64],
     bgpi: u8,
     obpi: u8,
+    // CGB HDMA (VRAM DMA)
+    hdma_active: bool,
+    hdma_hblank_mode: bool,
+    hdma_src: u16,
+    hdma_dst: u16,
+    hdma_remaining: u16, // bytes remaining
 }
 
 impl MMU {
@@ -52,6 +58,11 @@ impl MMU {
             cgb_obj_palette_data: [0; 64],
             bgpi: 0,
             obpi: 0,
+            hdma_active: false,
+            hdma_hblank_mode: false,
+            hdma_src: 0,
+            hdma_dst: 0,
+            hdma_remaining: 0,
         };
         mmu.reset();
         mmu
@@ -76,6 +87,11 @@ impl MMU {
     self.cgb_obj_palette_data.fill(0);
     self.bgpi = 0;
     self.obpi = 0;
+        self.hdma_active = false;
+        self.hdma_hblank_mode = false;
+        self.hdma_src = 0;
+        self.hdma_dst = 0;
+        self.hdma_remaining = 0;
 
         // IO defaults
         self.io[0x05] = 0x00; self.io[0x06] = 0x00; self.io[0x07] = 0x00;
@@ -252,6 +268,20 @@ impl MMU {
             if offset == 0x69 { return self.cgb_bg_palette_data[(self.bgpi & 0x3f) as usize]; }
             if offset == 0x6a { return self.obpi; }
             if offset == 0x6b { return self.cgb_obj_palette_data[(self.obpi & 0x3f) as usize]; }
+            // HDMA registers
+            if offset == 0x51 { return (self.hdma_src >> 8) as u8; }
+            if offset == 0x52 { return (self.hdma_src & 0x00ff) as u8 & 0xF0; }
+            if offset == 0x53 { return ((self.hdma_dst >> 8) as u8) & 0x1F; }
+            if offset == 0x54 { return (self.hdma_dst & 0x00ff) as u8 & 0xF0; }
+            if offset == 0x55 {
+                // Bit7 indicates active when set; low 7 bits = remaining blocks-1
+                if self.hdma_active {
+                    let blocks = (self.hdma_remaining + 15) / 16;
+                    return 0x80 | (((blocks.saturating_sub(1)) as u8) & 0x7f);
+                } else {
+                    return 0xff;
+                }
+            }
         }
         self.io[offset]
     }
@@ -275,6 +305,11 @@ impl MMU {
                 self.wram_bank = if bank == 0 { 1 } else { bank };
                 return;
             }
+            // HDMA source/dest registers
+            if offset == 0x51 { self.hdma_src = (self.hdma_src & 0x00ff) | ((val as u16) << 8); return; }
+            if offset == 0x52 { self.hdma_src = (self.hdma_src & 0xff00) | (val as u16 & 0xF0); return; }
+            if offset == 0x53 { self.hdma_dst = (self.hdma_dst & 0x00ff) | (((val as u16 & 0x1F) | 0x80) << 8); return; }
+            if offset == 0x54 { self.hdma_dst = (self.hdma_dst & 0xff00) | (val as u16 & 0xF0); return; }
             if offset == 0x68 { self.bgpi = val & 0xbf; return; }
             if offset == 0x69 {
                 let idx = (self.bgpi & 0x3f) as usize;
@@ -287,6 +322,25 @@ impl MMU {
                 let idx = (self.obpi & 0x3f) as usize;
                 self.cgb_obj_palette_data[idx] = val;
                 if (self.obpi & 0x80) != 0 { self.obpi = (self.obpi & 0x80) | ((self.obpi.wrapping_add(1)) & 0x3f); }
+                return;
+            }
+            if offset == 0x55 {
+                // Length is (val & 0x7F) + 1 blocks of 16 bytes
+                let blocks = ((val as u16 & 0x7f) + 1) as u16;
+                let length = blocks * 16;
+                if (val & 0x80) == 0 {
+                    // General DMA: copy all at once
+                    self.hdma_active = false;
+                    self.do_hdma_copy(length);
+                    self.io[0x55] = 0xff; // not active
+                } else {
+                    // HBlank DMA: start / update
+                    self.hdma_active = true;
+                    self.hdma_hblank_mode = true;
+                    self.hdma_remaining = length;
+                    // reflect remaining blocks (bit7 stays set)
+                    self.io[0x55] = 0x80 | (((blocks - 1) as u8) & 0x7f);
+                }
                 return;
             }
         }
@@ -345,4 +399,39 @@ impl MMU {
     pub fn get_io(&self) -> &[u8] { &self.io }
     pub fn get_io_mut(&mut self) -> &mut [u8] { &mut self.io }
     pub fn is_gbc(&self) -> bool { self.is_gbc }
+
+    // Perform one 16-byte HDMA chunk if active and in HBlank
+    pub fn hdma_hblank_step(&mut self) {
+        if !self.is_gbc || !self.hdma_active || !self.hdma_hblank_mode || self.hdma_remaining == 0 {
+            return;
+        }
+        let to_copy = 16u16;
+        self.do_hdma_copy(to_copy);
+        if self.hdma_remaining == 0 {
+            self.hdma_active = false;
+            self.hdma_hblank_mode = false;
+            self.io[0x55] = 0xff; // done
+        } else {
+            let blocks = (self.hdma_remaining + 15) / 16;
+            self.io[0x55] = 0x80 | (((blocks - 1) as u8) & 0x7f);
+        }
+    }
+
+    fn do_hdma_copy(&mut self, mut len: u16) {
+        while len > 0 {
+            let byte = self.read_byte(self.hdma_src);
+            let dst_off = (self.hdma_dst as usize).saturating_sub(0x8000);
+            if dst_off < 0x2000 {
+                if self.is_gbc && self.vram_bank < 2 {
+                    self.vram_banks[self.vram_bank][dst_off] = byte;
+                } else {
+                    if dst_off < self.vram.len() { self.vram[dst_off] = byte; }
+                }
+            }
+            self.hdma_src = self.hdma_src.wrapping_add(1);
+            self.hdma_dst = self.hdma_dst.wrapping_add(1);
+            self.hdma_remaining = self.hdma_remaining.saturating_sub(1);
+            len = len.saturating_sub(1);
+        }
+    }
 }

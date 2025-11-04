@@ -19,6 +19,8 @@ pub struct PPU {
     scanline_counter: u32,
     // Mapped BG color index (0..3) for current scanline, per pixel
     bg_color_line: [u8; SCREEN_WIDTH],
+    // CGB BG priority bit per pixel (attr bit7)
+    bg_priority_line: [bool; SCREEN_WIDTH],
 }
 
 impl PPU {
@@ -27,6 +29,7 @@ impl PPU {
             frame_buffer: vec![0xff; SCREEN_WIDTH * SCREEN_HEIGHT * 4],
             scanline_counter: 0,
             bg_color_line: [0; SCREEN_WIDTH],
+            bg_priority_line: [false; SCREEN_WIDTH],
         }
     }
 
@@ -37,6 +40,7 @@ impl PPU {
         self.set_ly(mmu, 0);
         // Clear BG color line
         self.bg_color_line.fill(0);
+        self.bg_priority_line.fill(false);
     }
 
     pub fn get_frame_buffer(&self) -> &[u8] {
@@ -138,6 +142,7 @@ impl PPU {
             self.frame_buffer[offset + 3] = 255;
             // Default BG color index = 0
             self.bg_color_line[x] = 0;
+            self.bg_priority_line[x] = false;
         }
 
         // BG (re-enabled for isolation test)
@@ -184,13 +189,14 @@ impl PPU {
             let mut xflip = false;
             let mut yflip = false;
             let mut palette_id = 0u8;
-            if is_cgb {
-                // Attributes are stored in VRAM bank 1 at same tile map address
-                attr = mmu.read_vram_bank_byte(tile_map_base + tile_index, 1);
-                vram_bank = ((attr >> 3) & 1) as usize;
-                xflip = (attr & 0x20) != 0;
-                yflip = (attr & 0x40) != 0;
-                palette_id = attr & 0x07;
+                if is_cgb {
+                    // Attributes are stored in VRAM bank 1 at same tile map address
+                    attr = mmu.read_vram_bank_byte(tile_map_base + tile_index, 1);
+                    vram_bank = ((attr >> 3) & 1) as usize;
+                    xflip = (attr & 0x20) != 0;
+                    yflip = (attr & 0x40) != 0;
+                    palette_id = attr & 0x07;
+                    // Set per-pixel BG priority later when pixel is written; cache the bit here
             }
 
             let mut tile_line = (y & 7) as u16;
@@ -222,6 +228,8 @@ impl PPU {
             let color_num = ((byte2 >> bit) & 1) << 1 | ((byte1 >> bit) & 1);
             // Track raw BG color number for sprite priority checks
             self.bg_color_line[x] = color_num;
+                // Track CGB BG priority (attr bit7) per pixel
+                if is_cgb { self.bg_priority_line[x] = (attr & 0x80) != 0; }
             // Convert to RGB
             let rgb = if is_cgb {
                 mmu.cgb_get_bg_color_rgb(palette_id, color_num)
@@ -240,9 +248,9 @@ impl PPU {
         let wx = io[0x4b];
     let bgp = io[0x47];
     let is_cgb = mmu.is_gbc();
-
-        if ly < wy {
-            return;
+                    let mut tile_line = (y & 7) as u16;
+                    if yflip { tile_line = 7 - tile_line; }
+                    let tile_line_addr = (tile_line * 2) as u16;
         }
 
         let tile_map_base: u16 = if lcdc & 0x40 != 0 { 0x9c00 } else { 0x9800 };
@@ -252,17 +260,17 @@ impl PPU {
         let window_y = ly - wy;
         let tile_y = ((window_y >> 3) & 31) as u16;
 
-        for x in 0..SCREEN_WIDTH {
-            let window_x = x as i16 - (wx as i16 - 7);
-            if window_x < 0 {
-                continue;
-            }
-            let window_x = window_x as u8;
-
-            let tile_x = ((window_x >> 3) & 31) as u16;
-            let tile_index = tile_y * 32 + tile_x;
-
-            let tile_num = mmu.read_byte(tile_map_base + tile_index);
+                    let (byte1, byte2) = if is_cgb {
+                        (
+                            mmu.read_vram_bank_byte(base_addr + tile_line_addr, vram_bank),
+                            mmu.read_vram_bank_byte(base_addr + tile_line_addr + 1, vram_bank),
+                        )
+                    } else {
+                        (
+                            mmu.read_byte(base_addr + tile_line_addr),
+                            mmu.read_byte(base_addr + tile_line_addr + 1),
+                        )
+                    };
             let mut attr = 0u8;
             let mut vram_bank = 0usize;
             let mut xflip = false;
@@ -303,6 +311,7 @@ impl PPU {
             let color_num = ((byte2 >> bit) & 1) << 1 | ((byte1 >> bit) & 1);
             // Window overwrites BG color index (store raw color number for priority)
             self.bg_color_line[x] = color_num;
+            if is_cgb { self.bg_priority_line[x] = (attr & 0x80) != 0; }
             let rgb = if is_cgb {
                 mmu.cgb_get_bg_color_rgb(palette_id, color_num)
             } else {
@@ -404,7 +413,14 @@ impl PPU {
                     continue;
                 }
 
-                // Priority: behind BG colors 1-3 (BG color 0 always lets OBJ show)
+                // Priority rules
+                // CGB BG priority bit forces BG over OBJ when BG color != 0
+                if is_cgb {
+                    if self.bg_priority_line[screen_x] && self.bg_color_line[screen_x] != 0 {
+                        continue;
+                    }
+                }
+                // DMG/OBJ priority bit: when set, OBJ behind BG colors 1-3
                 if priority {
                     if self.bg_color_line[screen_x] != 0 {
                         continue;
@@ -453,6 +469,11 @@ impl PPU {
         };
         
         mmu.get_io_mut()[0x41] = (stat & 0xfc) | (mode & 0x03);
+
+        // Trigger HDMA chunk on entering HBlank
+        if mode == MODE_HBLANK {
+            mmu.hdma_hblank_step();
+        }
 
         // STAT interrupt if enabled
         if stat_interrupt_enabled != 0 {
