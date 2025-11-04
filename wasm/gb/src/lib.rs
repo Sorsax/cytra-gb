@@ -18,6 +18,12 @@ use apu::APU;
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 
+use std::cell::RefCell;
+
+thread_local! {
+    static GB_SINGLETON: RefCell<Option<GameBoy>> = RefCell::new(None);
+}
+
 #[wasm_bindgen]
 pub struct GameBoy {
     running: bool,
@@ -1458,6 +1464,71 @@ impl GameBoy {
     }
 }
 
+// Free-function API to avoid Rc/RefMutFromWasmAbi on methods
+#[wasm_bindgen]
+pub fn gb_create() {
+    GB_SINGLETON.with(|cell| {
+        *cell.borrow_mut() = Some(GameBoy::new());
+    });
+}
+
+#[wasm_bindgen]
+pub fn gb_load_rom(data: &[u8]) {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow_mut().as_mut() {
+            gb.load_rom(data);
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn gb_reset() {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow_mut().as_mut() { gb.reset(); }
+    });
+}
+
+#[wasm_bindgen]
+pub fn gb_start() {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow_mut().as_mut() { gb.start(); }
+    });
+}
+
+#[wasm_bindgen]
+pub fn gb_stop() {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow_mut().as_mut() { gb.stop(); }
+    });
+}
+
+#[wasm_bindgen]
+pub fn gb_is_running() -> bool {
+    GB_SINGLETON.with(|cell| cell.borrow().as_ref().map(|g| g.is_running()).unwrap_or(false))
+}
+
+#[wasm_bindgen]
+pub fn gb_run_frame() -> bool {
+    GB_SINGLETON.with(|cell| {
+        let mut_ref = &mut *cell.borrow_mut();
+        if let Some(gb) = mut_ref.as_mut() { gb.run_frame() } else { false }
+    })
+}
+
+#[wasm_bindgen]
+pub fn gb_frame_buffer_ptr() -> *const u8 {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow().as_ref() { gb.frame_buffer_ptr() } else { std::ptr::null() }
+    })
+}
+
+#[wasm_bindgen]
+pub fn gb_frame_buffer_len() -> usize {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow().as_ref() { gb.frame_buffer_len() } else { 0 }
+    })
+}
+
 #[wasm_bindgen]
 pub fn screen_width() -> usize { SCREEN_WIDTH }
 
@@ -1469,4 +1540,32 @@ pub fn screen_height() -> usize { SCREEN_HEIGHT }
 pub fn wasm_start() {
     // Set panic hook for readable errors in JS console
     console_error_panic_hook::set_once();
+}
+
+#[wasm_bindgen]
+pub fn gb_press_button(bit: u8) {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow_mut().as_mut() { gb.press_button(bit); }
+    });
+}
+
+#[wasm_bindgen]
+pub fn gb_release_button(bit: u8) {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow_mut().as_mut() { gb.release_button(bit); }
+    });
+}
+
+#[wasm_bindgen]
+pub fn gb_save_state() -> String {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow().as_ref() { gb.save_state() } else { "{}".to_string() }
+    })
+}
+
+#[wasm_bindgen]
+pub fn gb_load_state(state: &str) {
+    GB_SINGLETON.with(|cell| {
+        if let Some(gb) = cell.borrow_mut().as_mut() { gb.load_state(state); }
+    });
 }

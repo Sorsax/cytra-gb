@@ -5,12 +5,14 @@ export type WasmModule = typeof import('./pkg/cytra_gb_core');
 
 export class WasmGameBoy {
   private mod!: WasmModule;
-  private core!: import('./pkg/cytra_gb_core').GameBoy;
   private memory!: WebAssembly.Memory;
   private fb!: Uint8Array;
   private lastTrace: string = '';
   private disposed: boolean = false;
   private traceFrameCounter: number = 0;
+  private busy: boolean = false;
+  private fbPtr: number = 0;
+  private fbLen: number = 0;
 
   static async create(): Promise<WasmGameBoy> {
     const instance = new WasmGameBoy();
@@ -20,17 +22,18 @@ export class WasmGameBoy {
     const initOutput = await mod.default();
     instance.memory = initOutput.memory;
     instance.mod = mod;
-    instance.core = new mod.GameBoy();
-    // Note: avoid enabling opcode trace by default to reduce WASM allocations
+    // Use free-function API backed by a Rust-side singleton to avoid Rc churn
+    (mod as any).gb_create();
     instance.refreshFrameBufferView();
     return instance;
   }
 
   private refreshFrameBufferView() {
-    const ptr = this.core.frame_buffer_ptr();
-    const len = this.core.frame_buffer_len();
-    const bytes = new Uint8Array(this.memory.buffer, ptr, len);
-    this.fb = new Uint8Array(len);
+    // Cache framebuffer location/size once; they are stable
+  this.fbPtr = (this.mod as any).gb_frame_buffer_ptr();
+  this.fbLen = (this.mod as any).gb_frame_buffer_len();
+    const bytes = new Uint8Array(this.memory.buffer, this.fbPtr, this.fbLen);
+    this.fb = new Uint8Array(this.fbLen);
     this.fb.set(bytes);
   }
 
@@ -39,22 +42,22 @@ export class WasmGameBoy {
 
   loadROM(data: Uint8Array): void {
     if (!this.disposed) {
-      this.core.load_rom(data);
+      (this.mod as any).gb_load_rom(data);
       this.disposed = false; // Allow re-use after ROM load
     }
   }
   reset(): void {
-    if (!this.disposed) this.core.reset();
+    if (!this.disposed) (this.mod as any).gb_reset();
   }
   start(): void {
-    if (!this.disposed) this.core.start();
+    if (!this.disposed) (this.mod as any).gb_start();
   }
   stop(): void {
-    if (!this.disposed) this.core.stop();
+    if (!this.disposed) (this.mod as any).gb_stop();
   }
   isRunning(): boolean {
     if (this.disposed) return false;
-    return this.core.is_running();
+    return (this.mod as any).gb_is_running();
   }
 
   runFrame(): boolean {
@@ -62,15 +65,20 @@ export class WasmGameBoy {
       console.warn('Attempted to run frame on disposed GameBoy instance');
       return false;
     }
+    if (this.busy) {
+      // Prevent any re-entrancy into WASM; skip this frame
+      return false;
+    }
 
     try {
-      const ready = this.core.run_frame();
+      this.busy = true;
+  const ready = (this.mod as any).gb_run_frame();
       // Copy out latest framebuffer to keep a stable view for canvas
-      const ptr = this.core.frame_buffer_ptr();
-      const len = this.core.frame_buffer_len();
+      const ptr = this.fbPtr;
+      const len = this.fbLen;
       
       // Validate framebuffer dimensions
-      const expectedLen = 160 * 144 * 4;
+  const expectedLen = 160 * 144 * 4;
       if (len !== expectedLen) {
         console.error(`Framebuffer size mismatch: expected ${expectedLen}, got ${len}`);
         this.disposed = true;
@@ -84,7 +92,7 @@ export class WasmGameBoy {
         return false;
       }
       
-      const bytes = new Uint8Array(this.memory.buffer, ptr, len);
+  const bytes = new Uint8Array(this.memory.buffer, ptr, len);
       this.fb.set(bytes);
 
       // Snapshot opcode trace infrequently to limit allocator pressure
@@ -92,7 +100,7 @@ export class WasmGameBoy {
       try {
         this.traceFrameCounter = (this.traceFrameCounter + 1) % 60; // ~once per second at 60fps
         if (this.traceFrameCounter === 0) {
-          const anyCore: any = this.core as any;
+          const anyCore: any = this.mod as any;
           if (anyCore.dump_trace) {
             this.lastTrace = anyCore.dump_trace();
           }
@@ -109,6 +117,8 @@ export class WasmGameBoy {
         console.error('CPU trace (last ops):\n' + this.lastTrace);
       }
       throw e;
+    } finally {
+      this.busy = false;
     }
   }
 
@@ -116,10 +126,10 @@ export class WasmGameBoy {
 
   // Provide an Input-like API to minimize UI changes
   public input = {
-    pressButton: (button: number) => this.core.press_button(button),
-    releaseButton: (button: number) => this.core.release_button(button),
+    pressButton: (button: number) => (this.mod as any).gb_press_button?.(button),
+    releaseButton: (button: number) => (this.mod as any).gb_release_button?.(button),
   };
 
-  saveState(): string { return this.core.save_state(); }
-  loadState(state: string): void { this.core.load_state(state); }
+  saveState(): string { return (this.mod as any).gb_save_state?.(); }
+  loadState(state: string): void { (this.mod as any).gb_load_state?.(state); }
 }
