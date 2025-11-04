@@ -27,17 +27,26 @@ function App() {
 
   // Main emulation loop
   const emulationLoop = useCallback(() => {
-    if (!emulator) return;
-    if (!runningRef.current) return;
-    try {
-      emulator.runFrame();
-    } catch (e) {
-      console.error('runFrame threw:', e);
-      runningRef.current = false;
-      setIsRunning(false);
+    if (!emulator || !runningRef.current) {
       return;
     }
-    animationFrameRef.current = requestAnimationFrame(emulationLoop);
+    
+    try {
+      emulator.runFrame();
+      // Only schedule next frame if still running after this frame
+      if (runningRef.current) {
+        animationFrameRef.current = requestAnimationFrame(emulationLoop);
+      }
+    } catch (e) {
+      console.error('runFrame threw:', e);
+      // Immediately stop to prevent any further frames
+      runningRef.current = false;
+      setIsRunning(false);
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
+    }
   }, [emulator]);
 
   // Start emulation
