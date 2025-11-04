@@ -108,22 +108,10 @@ impl GameBoy {
         let target_cycles = 70224;
         let mut frame_cycles = 0;
         let mut frame_ready = false;
-        let mut instruction_count = 0;
-        const MAX_INSTRUCTIONS_PER_FRAME: u32 = 50000; // Safety limit
 
         while frame_cycles < target_cycles {
             let cpu_cycles = self.step_cpu();
             frame_cycles += cpu_cycles;
-            instruction_count += 1;
-            
-            // Safety check: prevent infinite loops from hanging the emulator
-            if instruction_count > MAX_INSTRUCTIONS_PER_FRAME {
-                // CPU is stuck in a tight loop - this shouldn't happen in normal operation
-                // Stop emulation to prevent memory corruption
-                self.running = false;
-                panic!("CPU instruction limit exceeded ({} instructions, {} cycles). Possible infinite loop at PC={:04X}", 
-                    instruction_count, frame_cycles, self.registers.pc);
-            }
             
             // Update peripherals
             self.timer.step(cpu_cycles, self.mmu.get_io_mut());
