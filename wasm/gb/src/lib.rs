@@ -1403,3 +1403,10 @@ pub fn screen_width() -> usize { SCREEN_WIDTH }
 
 #[wasm_bindgen]
 pub fn screen_height() -> usize { SCREEN_HEIGHT }
+
+// Initialize better panic messages in the browser console
+#[wasm_bindgen(start)]
+pub fn wasm_start() {
+    // Set panic hook for readable errors in JS console
+    console_error_panic_hook::set_once();
+}

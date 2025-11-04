@@ -49,7 +49,7 @@ impl MMU {
     }
 
     pub fn reset(&mut self) {
-        self.rom.fill(0);
+        // Do NOT clear ROM here keep loaded cartridge contents intact across resets
         self.vram.fill(0);
         self.eram.fill(0);
         self.wram.fill(0);
