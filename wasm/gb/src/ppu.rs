@@ -17,6 +17,8 @@ const SCANLINE_CYCLES: u32 = 456;
 pub struct PPU {
     frame_buffer: Vec<u8>,
     scanline_counter: u32,
+    // Mapped BG color index (0..3) for current scanline, per pixel
+    bg_color_line: [u8; SCREEN_WIDTH],
 }
 
 impl PPU {
@@ -24,6 +26,7 @@ impl PPU {
         Self {
             frame_buffer: vec![0xff; SCREEN_WIDTH * SCREEN_HEIGHT * 4],
             scanline_counter: 0,
+            bg_color_line: [0; SCREEN_WIDTH],
         }
     }
 
@@ -32,6 +35,8 @@ impl PPU {
         self.scanline_counter = 0;
         self.set_mode(mmu, MODE_OAM_SCAN);
         self.set_ly(mmu, 0);
+        // Clear BG color line
+        self.bg_color_line.fill(0);
     }
 
     pub fn get_frame_buffer(&self) -> &[u8] {
@@ -131,6 +136,8 @@ impl PPU {
             self.frame_buffer[offset + 1] = 255;
             self.frame_buffer[offset + 2] = 255;
             self.frame_buffer[offset + 3] = 255;
+            // Default BG mapped color = 0 (treated as white)
+            self.bg_color_line[x] = 0;
         }
 
         // BG (re-enabled for isolation test)
@@ -188,7 +195,8 @@ impl PPU {
             let bit_pos = 7 - (x_pos & 7);
             let color_num = ((byte2 >> bit_pos) & 1) << 1 | ((byte1 >> bit_pos) & 1);
             let color = (bgp >> (color_num * 2)) & 0x03;
-
+            // Track BG mapped color for sprite priority checks
+            self.bg_color_line[x] = color;
             // Convert to RGB
             let rgb = self.get_color(color);
             self.set_pixel_rgb(ly, x, rgb);
@@ -239,7 +247,8 @@ impl PPU {
             let bit_pos = 7 - (window_x & 7);
             let color_num = ((byte2 >> bit_pos) & 1) << 1 | ((byte1 >> bit_pos) & 1);
             let color = (bgp >> (color_num * 2)) & 0x03;
-
+            // Window overwrites BG color index
+            self.bg_color_line[x] = color;
             let rgb = self.get_color(color);
             self.set_pixel_rgb(ly, x, rgb);
         }
@@ -266,13 +275,13 @@ impl PPU {
             }
         }
 
-        // Sort by X, then index (simple insertion sort for small fixed buffer)
+        // Sort by X DESC, then index DESC so that lower X (and lower index) draws last (visible)
         for idx in 1..count {
             let mut j = idx;
             while j > 0 {
                 let a = buf[j - 1];
                 let b = buf[j];
-                if a.0 > b.0 || (a.0 == b.0 && a.1 > b.1) {
+                if a.0 < b.0 || (a.0 == b.0 && a.1 < b.1) {
                     buf[j - 1] = b;
                     buf[j] = a;
                     j -= 1;
@@ -324,15 +333,10 @@ impl PPU {
                     continue;
                 }
 
-                // Priority
+                // Priority: behind BG colors 1-3 (BG color 0 always lets OBJ show)
                 if priority {
-                    let offset = (ly as usize * SCREEN_WIDTH + screen_x) * 4;
-                    // Bounds check before accessing framebuffer
-                    if offset < self.frame_buffer.len() {
-                        let bg_color = self.frame_buffer[offset];
-                        if bg_color != 255 {
-                            continue; // BG wins
-                        }
+                    if self.bg_color_line[screen_x] != 0 {
+                        continue;
                     }
                 }
 
