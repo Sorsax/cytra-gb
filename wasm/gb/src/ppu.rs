@@ -317,9 +317,12 @@ impl PPU {
                 // Priority
                 if priority {
                     let offset = (ly as usize * SCREEN_WIDTH + screen_x) * 4;
-                    let bg_color = self.frame_buffer[offset];
-                    if bg_color != 255 {
-                        continue; // BG wins
+                    // Bounds check before accessing framebuffer
+                    if offset < self.frame_buffer.len() {
+                        let bg_color = self.frame_buffer[offset];
+                        if bg_color != 255 {
+                            continue; // BG wins
+                        }
                     }
                 }
 
