@@ -20,6 +20,11 @@ pub struct MMU {
     wram_bank: usize,
     vram_banks: [Vec<u8>; 2],
     wram_banks: Vec<Vec<u8>>,
+    // CGB palette RAM and registers
+    cgb_bg_palette_data: [u8; 64],
+    cgb_obj_palette_data: [u8; 64],
+    bgpi: u8,
+    obpi: u8,
 }
 
 impl MMU {
@@ -43,6 +48,10 @@ impl MMU {
             wram_bank: 1,
             vram_banks: [vec![0; 0x2000], vec![0; 0x2000]],
             wram_banks: (0..8).map(|_| vec![0; 0x1000]).collect(),
+            cgb_bg_palette_data: [0; 64],
+            cgb_obj_palette_data: [0; 64],
+            bgpi: 0,
+            obpi: 0,
         };
         mmu.reset();
         mmu
@@ -63,6 +72,10 @@ impl MMU {
         self.banking_mode = 0;
         self.vram_bank = 0;
         self.wram_bank = 1;
+    self.cgb_bg_palette_data.fill(0);
+    self.cgb_obj_palette_data.fill(0);
+    self.bgpi = 0;
+    self.obpi = 0;
 
         // IO defaults
         self.io[0x05] = 0x00; self.io[0x06] = 0x00; self.io[0x07] = 0x00;
@@ -235,6 +248,10 @@ impl MMU {
         if self.is_gbc {
             if offset == 0x4f { return self.vram_bank as u8 | 0xfe; }
             if offset == 0x70 { return self.wram_bank as u8 | 0xf8; }
+            if offset == 0x68 { return self.bgpi; }
+            if offset == 0x69 { return self.cgb_bg_palette_data[(self.bgpi & 0x3f) as usize]; }
+            if offset == 0x6a { return self.obpi; }
+            if offset == 0x6b { return self.cgb_obj_palette_data[(self.obpi & 0x3f) as usize]; }
         }
         self.io[offset]
     }
@@ -258,6 +275,20 @@ impl MMU {
                 self.wram_bank = if bank == 0 { 1 } else { bank };
                 return;
             }
+            if offset == 0x68 { self.bgpi = val & 0xbf; return; }
+            if offset == 0x69 {
+                let idx = (self.bgpi & 0x3f) as usize;
+                self.cgb_bg_palette_data[idx] = val;
+                if (self.bgpi & 0x80) != 0 { self.bgpi = (self.bgpi & 0x80) | ((self.bgpi.wrapping_add(1)) & 0x3f); }
+                return;
+            }
+            if offset == 0x6a { self.obpi = val & 0xbf; return; }
+            if offset == 0x6b {
+                let idx = (self.obpi & 0x3f) as usize;
+                self.cgb_obj_palette_data[idx] = val;
+                if (self.obpi & 0x80) != 0 { self.obpi = (self.obpi & 0x80) | ((self.obpi.wrapping_add(1)) & 0x3f); }
+                return;
+            }
         }
         self.io[offset] = val;
     }
@@ -271,6 +302,43 @@ impl MMU {
 
     pub fn get_vram(&self) -> &[u8] {
         if self.is_gbc { &self.vram_banks[self.vram_bank] } else { &self.vram }
+    }
+
+    pub fn get_vram_bank_ref(&self, bank: usize) -> &[u8] {
+        if self.is_gbc { &self.vram_banks[bank & 1] } else { &self.vram }
+    }
+
+    pub fn read_vram_bank_byte(&self, addr: u16, bank: usize) -> u8 {
+        let offset = addr as usize - 0x8000;
+        if self.is_gbc {
+            self.vram_banks[bank & 1].get(offset).copied().unwrap_or(0)
+        } else {
+            self.vram.get(offset).copied().unwrap_or(0)
+        }
+    }
+
+    fn expand_5_to_8(v: u16) -> u8 { ((v * 527 + 23) >> 6) as u8 }
+
+    pub fn cgb_get_bg_color_rgb(&self, palette: u8, index: u8) -> [u8; 3] {
+        let idx = (palette as usize & 7) * 8 + (index as usize & 3) * 2;
+        let lo = self.cgb_bg_palette_data[idx] as u16;
+        let hi = self.cgb_bg_palette_data[idx + 1] as u16;
+        let val = lo | (hi << 8);
+        let r = Self::expand_5_to_8(val & 0x1f);
+        let g = Self::expand_5_to_8((val >> 5) & 0x1f);
+        let b = Self::expand_5_to_8((val >> 10) & 0x1f);
+        [r, g, b]
+    }
+
+    pub fn cgb_get_obj_color_rgb(&self, palette: u8, index: u8) -> [u8; 3] {
+        let idx = (palette as usize & 7) * 8 + (index as usize & 3) * 2;
+        let lo = self.cgb_obj_palette_data[idx] as u16;
+        let hi = self.cgb_obj_palette_data[idx + 1] as u16;
+        let val = lo | (hi << 8);
+        let r = Self::expand_5_to_8(val & 0x1f);
+        let g = Self::expand_5_to_8((val >> 5) & 0x1f);
+        let b = Self::expand_5_to_8((val >> 10) & 0x1f);
+        [r, g, b]
     }
 
     pub fn get_oam(&self) -> &[u8] { &self.oam }

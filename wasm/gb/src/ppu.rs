@@ -136,7 +136,7 @@ impl PPU {
             self.frame_buffer[offset + 1] = 255;
             self.frame_buffer[offset + 2] = 255;
             self.frame_buffer[offset + 3] = 255;
-            // Default BG mapped color = 0 (treated as white)
+            // Default BG color index = 0
             self.bg_color_line[x] = 0;
         }
 
@@ -162,6 +162,7 @@ impl PPU {
         let scy = io[0x42];
         let scx = io[0x43];
         let bgp = io[0x47];
+        let is_cgb = mmu.is_gbc();
 
         // Tile map/data
         let tile_map_base: u16 = if lcdc & 0x08 != 0 { 0x9c00 } else { 0x9800 };
@@ -176,29 +177,58 @@ impl PPU {
             let tile_x = ((x_pos >> 3) & 31) as u16;
             let tile_index = tile_y * 32 + tile_x;
 
-            // Tile number
+            // Tile number and attributes (CGB)
             let tile_num = mmu.read_byte(tile_map_base + tile_index);
-            let tile_addr = if signed_tile_data {
+            let mut attr = 0u8;
+            let mut vram_bank = 0usize;
+            let mut xflip = false;
+            let mut yflip = false;
+            let mut palette_id = 0u8;
+            if is_cgb {
+                // Attributes are stored in VRAM bank 1 at same tile map address
+                attr = mmu.read_vram_bank_byte(tile_map_base + tile_index, 1);
+                vram_bank = ((attr >> 3) & 1) as usize;
+                xflip = (attr & 0x20) != 0;
+                yflip = (attr & 0x40) != 0;
+                palette_id = attr & 0x07;
+            }
+
+            let mut tile_line = (y & 7) as u16;
+            if yflip { tile_line = 7 - tile_line; }
+            let tile_line_addr = (tile_line * 2) as u16;
+
+            let base_addr = if signed_tile_data {
                 let offset = (tile_num as i8 as i16 as u16).wrapping_add(128);
                 tile_data_base.wrapping_add(offset * 16)
             } else {
                 tile_data_base + (tile_num as u16) * 16
             };
 
-            let tile_line = ((y & 7) * 2) as u16;
-
             // Tile data
-            let byte1 = mmu.read_byte(tile_addr + tile_line);
-            let byte2 = mmu.read_byte(tile_addr + tile_line + 1);
+            let (byte1, byte2) = if is_cgb {
+                (
+                    mmu.read_vram_bank_byte(base_addr + tile_line_addr, vram_bank),
+                    mmu.read_vram_bank_byte(base_addr + tile_line_addr + 1, vram_bank),
+                )
+            } else {
+                (
+                    mmu.read_byte(base_addr + tile_line_addr),
+                    mmu.read_byte(base_addr + tile_line_addr + 1),
+                )
+            };
 
             // Pixel
-            let bit_pos = 7 - (x_pos & 7);
-            let color_num = ((byte2 >> bit_pos) & 1) << 1 | ((byte1 >> bit_pos) & 1);
-            let color = (bgp >> (color_num * 2)) & 0x03;
-            // Track BG mapped color for sprite priority checks
-            self.bg_color_line[x] = color;
+            let bit = if xflip { (x_pos & 7) } else { 7 - (x_pos & 7) };
+            let color_num = ((byte2 >> bit) & 1) << 1 | ((byte1 >> bit) & 1);
+            // Track raw BG color number for sprite priority checks
+            self.bg_color_line[x] = color_num;
             // Convert to RGB
-            let rgb = self.get_color(color);
+            let rgb = if is_cgb {
+                mmu.cgb_get_bg_color_rgb(palette_id, color_num)
+            } else {
+                let mapped = (bgp >> (color_num * 2)) & 0x03;
+                self.get_color(mapped)
+            };
             self.set_pixel_rgb(ly, x, rgb);
         }
     }
@@ -208,7 +238,8 @@ impl PPU {
         let lcdc = io[0x40];
         let wy = io[0x4a];
         let wx = io[0x4b];
-        let bgp = io[0x47];
+    let bgp = io[0x47];
+    let is_cgb = mmu.is_gbc();
 
         if ly < wy {
             return;
@@ -232,24 +263,52 @@ impl PPU {
             let tile_index = tile_y * 32 + tile_x;
 
             let tile_num = mmu.read_byte(tile_map_base + tile_index);
-            let tile_addr = if signed_tile_data {
+            let mut attr = 0u8;
+            let mut vram_bank = 0usize;
+            let mut xflip = false;
+            let mut yflip = false;
+            let mut palette_id = 0u8;
+            if is_cgb {
+                attr = mmu.read_vram_bank_byte(tile_map_base + tile_index, 1);
+                vram_bank = ((attr >> 3) & 1) as usize;
+                xflip = (attr & 0x20) != 0;
+                yflip = (attr & 0x40) != 0;
+                palette_id = attr & 0x07;
+            }
+
+            let mut tile_line = (window_y & 7) as u16;
+            if yflip { tile_line = 7 - tile_line; }
+            let tile_line_addr = (tile_line * 2) as u16;
+
+            let base_addr = if signed_tile_data {
                 let offset = (tile_num as i8 as i16 as u16).wrapping_add(128);
                 tile_data_base.wrapping_add(offset * 16)
             } else {
                 tile_data_base + (tile_num as u16) * 16
             };
 
-            let tile_line = ((window_y & 7) * 2) as u16;
+            let (byte1, byte2) = if is_cgb {
+                (
+                    mmu.read_vram_bank_byte(base_addr + tile_line_addr, vram_bank),
+                    mmu.read_vram_bank_byte(base_addr + tile_line_addr + 1, vram_bank),
+                )
+            } else {
+                (
+                    mmu.read_byte(base_addr + tile_line_addr),
+                    mmu.read_byte(base_addr + tile_line_addr + 1),
+                )
+            };
 
-            let byte1 = mmu.read_byte(tile_addr + tile_line);
-            let byte2 = mmu.read_byte(tile_addr + tile_line + 1);
-
-            let bit_pos = 7 - (window_x & 7);
-            let color_num = ((byte2 >> bit_pos) & 1) << 1 | ((byte1 >> bit_pos) & 1);
-            let color = (bgp >> (color_num * 2)) & 0x03;
-            // Window overwrites BG color index
-            self.bg_color_line[x] = color;
-            let rgb = self.get_color(color);
+            let bit = if xflip { (window_x & 7) } else { 7 - (window_x & 7) };
+            let color_num = ((byte2 >> bit) & 1) << 1 | ((byte1 >> bit) & 1);
+            // Window overwrites BG color index (store raw color number for priority)
+            self.bg_color_line[x] = color_num;
+            let rgb = if is_cgb {
+                mmu.cgb_get_bg_color_rgb(palette_id, color_num)
+            } else {
+                let mapped = (bgp >> (color_num * 2)) & 0x03;
+                self.get_color(mapped)
+            };
             self.set_pixel_rgb(ly, x, rgb);
         }
     }
@@ -300,6 +359,8 @@ impl PPU {
             let attributes = oam[i * 4 + 3];
 
             let palette = if attributes & 0x10 != 0 { io[0x49] } else { io[0x48] };
+            let is_cgb = mmu.is_gbc();
+            let obj_pal_index = attributes & 0x07; // CGB OBJ palette number
             let x_flip = (attributes & 0x20) != 0;
             let y_flip = (attributes & 0x40) != 0;
             let priority = (attributes & 0x80) != 0;
@@ -315,8 +376,18 @@ impl PPU {
             }
 
             let tile_addr = 0x8000 + (tile_num as u16) * 16 + (tile_line as u16) * 2;
-            let byte1 = mmu.read_byte(tile_addr);
-            let byte2 = mmu.read_byte(tile_addr + 1);
+            let vram_bank = if is_cgb { ((attributes >> 3) & 1) as usize } else { 0 };
+            let (byte1, byte2) = if is_cgb {
+                (
+                    mmu.read_vram_bank_byte(tile_addr, vram_bank),
+                    mmu.read_vram_bank_byte(tile_addr + 1, vram_bank),
+                )
+            } else {
+                (
+                    mmu.read_byte(tile_addr),
+                    mmu.read_byte(tile_addr + 1),
+                )
+            };
 
             for x in 0..8 {
                 let screen_x = sprite_x.wrapping_add(x) as i16;
@@ -340,8 +411,12 @@ impl PPU {
                     }
                 }
 
-                let color = (palette >> (color_num * 2)) & 0x03;
-                let rgb = self.get_color(color);
+                let rgb = if is_cgb {
+                    mmu.cgb_get_obj_color_rgb(obj_pal_index, color_num)
+                } else {
+                    let color = (palette >> (color_num * 2)) & 0x03;
+                    self.get_color(color)
+                };
                 self.set_pixel_rgb(ly, screen_x, rgb);
             }
         }
