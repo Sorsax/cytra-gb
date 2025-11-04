@@ -10,6 +10,7 @@ function App() {
   const [isRunning, setIsRunning] = useState(false);
   const [romLoaded, setRomLoaded] = useState(false);
   const animationFrameRef = useRef<number>();
+  const runningRef = useRef(false);
 
   // Load WASM core once
   useEffect(() => {
@@ -26,15 +27,23 @@ function App() {
 
   // Main emulation loop
   const emulationLoop = useCallback(() => {
-    if (emulator && emulator.isRunning()) {
+    if (!emulator) return;
+    if (!runningRef.current) return;
+    try {
       emulator.runFrame();
-      animationFrameRef.current = requestAnimationFrame(emulationLoop);
+    } catch (e) {
+      console.error('runFrame threw:', e);
+      runningRef.current = false;
+      setIsRunning(false);
+      return;
     }
+    animationFrameRef.current = requestAnimationFrame(emulationLoop);
   }, [emulator]);
 
   // Start emulation
   const startEmulation = useCallback(() => {
     if (!romLoaded || !emulator) return;
+    runningRef.current = true;
     emulator.start();
     setIsRunning(true);
     animationFrameRef.current = requestAnimationFrame(emulationLoop);
@@ -44,6 +53,7 @@ function App() {
   const stopEmulation = useCallback(() => {
     if (!emulator) return;
     emulator.stop();
+    runningRef.current = false;
     setIsRunning(false);
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -62,13 +72,14 @@ function App() {
       console.log('ROM loaded successfully');
       
       // Start emulation directly (don't rely on async state)
+      runningRef.current = true;
       emulator.start();
       setIsRunning(true);
       animationFrameRef.current = requestAnimationFrame(emulationLoop);
       
       // Debug: Check emulator state after a moment
       setTimeout(() => {
-        console.log('Emulator running:', emulator.isRunning());
+        try { console.log('Emulator running:', emulator.isRunning()); } catch (e) { console.warn('isRunning() failed', e); }
         console.log('PC:', (emulator as any).core?.get_pc?.());
         console.log('LCDC:', (emulator as any).core?.get_lcdc?.());
       }, 100);
