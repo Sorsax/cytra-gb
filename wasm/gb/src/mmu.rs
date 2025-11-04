@@ -229,7 +229,8 @@ impl MMU {
     fn read_io(&self, addr: usize) -> u8 {
         let offset = addr - 0xff00;
         if offset == 0x00 {
-            return self.io[offset];
+            // JOYP: bits 6-7 are always 1 on DMG; bits 0-3 reflect keys, 4-5 are select
+            return 0xC0 | (self.io[0x00] & 0x3F);
         }
         if self.is_gbc {
             if offset == 0x4f { return self.vram_bank as u8 | 0xfe; }
@@ -240,6 +241,12 @@ impl MMU {
 
     fn write_io(&mut self, addr: usize, val: u8) {
         let offset = addr - 0xff00;
+        if offset == 0x00 {
+            // JOYP: only bits 4-5 (select lines) are writable
+            let prev = self.io[0x00];
+            self.io[0x00] = (prev & 0xCF) | (val & 0x30);
+            return;
+        }
         if offset == 0x04 { self.io[offset] = 0; return; }
         if offset == 0x41 { self.io[offset] = (self.io[offset] & 0x07) | (val & 0xf8); return; }
         if offset == 0x44 { return; }

@@ -138,8 +138,8 @@ impl PPU {
             self.render_background(mmu, ly);
         }
 
-        // WIN
-        if false && lcdc & 0x20 != 0 {
+        // WIN (re-enabled)
+        if lcdc & 0x20 != 0 {
             self.render_window(mmu, ly);
         }
 
