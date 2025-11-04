@@ -33,8 +33,9 @@ pub struct GameBoy {
     ime_scheduled: bool,
     // Debug trace of last N opcodes
     trace_enabled: bool,
-    trace_buf: [(u16, u8); 256],
+    trace_buf: [(u16, u8, u16); 256],
     trace_idx: usize,
+    last_interrupt: Option<(u8, u16, u8, u8)>, // (interrupt id, pc before jump, IE, IF)
 }
 
 #[derive(Serialize, Deserialize)]
@@ -69,8 +70,9 @@ impl GameBoy {
             ime: false,
             ime_scheduled: false,
             trace_enabled: false,
-            trace_buf: [(0, 0); 256],
+            trace_buf: [(0, 0, 0); 256],
             trace_idx: 0,
+            last_interrupt: None,
         }
     }
 
@@ -91,6 +93,9 @@ impl GameBoy {
         self.halted = false;
         self.ime = false;
         self.ime_scheduled = false;
+        self.trace_idx = 0;
+        self.trace_buf.fill((0, 0, 0));
+        self.last_interrupt = None;
     }
 
     pub fn start(&mut self) { self.running = true; }
@@ -143,7 +148,7 @@ impl GameBoy {
         let pc_before = self.registers.pc;
         let opcode = self.fetch_byte();
         if self.trace_enabled {
-            self.trace_buf[self.trace_idx & 0xff] = (pc_before, opcode);
+            self.trace_buf[self.trace_idx & 0xff] = (pc_before, opcode, self.registers.sp);
             self.trace_idx = self.trace_idx.wrapping_add(1);
         }
         self.execute_opcode(opcode);
@@ -169,6 +174,9 @@ impl GameBoy {
         self.halted = false;
         let if_ = self.mmu.read_byte(0xff0f);
         self.mmu.write_byte(0xff0f, if_ & !(1 << interrupt));
+        let pc_before = self.registers.pc;
+    let ie = self.mmu.read_byte(0xffff);
+    self.last_interrupt = Some((interrupt, pc_before, ie, if_));
         self.push_word(self.registers.pc);
         let handlers = [0x40, 0x48, 0x50, 0x58, 0x60];
         self.registers.pc = handlers[interrupt as usize];
@@ -1381,11 +1389,22 @@ impl GameBoy {
 
     pub fn dump_trace(&self) -> String {
         let mut out = String::new();
+        use std::fmt::Write as _;
         let start = self.trace_idx.min(256);
         for i in 0..start {
-            let (pc, op) = self.trace_buf[(self.trace_idx.wrapping_sub(start - i)) & 0xff];
-            use std::fmt::Write as _;
-            let _ = write!(out, "{:04X}: {:02X}\n", pc, op);
+            let (pc, op, sp) = self.trace_buf[(self.trace_idx.wrapping_sub(start - i)) & 0xff];
+            let _ = write!(out, "{:04X}: {:02X} SP={:04X}\n", pc, op, sp);
+        }
+        if let Some((intr, pc, ie, if_)) = self.last_interrupt {
+            let _ = write!(
+                out,
+                "Last interrupt: id={} pc={:04X} IE={:02X} IF={:02X}\nIME={}\n",
+                intr,
+                pc,
+                ie,
+                if_,
+                self.ime
+            );
         }
         out
     }
