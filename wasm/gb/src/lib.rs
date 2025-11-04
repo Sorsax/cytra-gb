@@ -148,9 +148,8 @@ impl GameBoy {
             self.ime_scheduled = false;
         }
 
-        // TEMPORARY: Disable interrupt servicing to test if corruption is interrupt-related
         // Only service interrupts if IME is enabled
-        if false && self.ime {
+        if self.ime {
             if let Some(interrupt) = self.check_interrupts() {
                 self.handle_interrupt(interrupt);
                 return self.cycles - cycles_before;
