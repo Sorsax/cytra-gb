@@ -2,11 +2,11 @@
 
 <div align="center">
 
-![CytraGB Logo](public/gameboy)
+![CytraGB Logo](public/logo.png)
 
 **A high-performance Game Boy Color emulator for the web**
 
-Built with Rust (WebAssembly), React, and modern web technologies
+Built with Rust (WebAssembly)
 
 [Demo](#) • [Documentation](ARCHITECTURE.md) • [User Guide](USER_GUIDE.md) • [Setup](SETUP.md)
 
@@ -27,26 +27,17 @@ Built with Rust (WebAssembly), React, and modern web technologies
 - **PPU**: Scanline-accurate background, window, and sprite rendering
 - **MMU**: ROM/RAM banking (MBC1-style) with GBC support
 - **Timer**: DIV and TIMA with interrupt generation
-- **Input**: Joypad with interrupt support
 
 ### Game Boy Color Support
 - GBC-enhanced games with color palettes
 - VRAM and WRAM banking
 - Both DMG and GBC modes
-- Compatible with most commercial games
 
 ### Save States
 - Save your progress at any time
 - Stored in browser local storage
 - Persists between sessions
 - Quick save/load functionality
-
-### Modern UI
-- Clean, minimalistic design
-- Dark theme with cyan accents
-- Responsive layout
-- No unnecessary elements
-- Performance-focused interface
 
 ### Keyboard Controls
 
@@ -93,8 +84,6 @@ cytra-gb/
 - Game Boy (.gb) games
 - Game Boy Color (.gbc) games
 - MBC1, MBC3, MBC5 cartridges
-- Most commercial games
-- Homebrew games
 
 ### Limitations
 
@@ -111,7 +100,7 @@ cytra-gb/
 
 ### Known Issues
 
-- **Runtime panic**: Some ROMs cause WASM panic during execution (under investigation)
+- **Runtime panic**: Some ROMs cause WASM panic during execution
 - Save states work but emulation stability needs improvement
 
 ## Documentation
@@ -132,7 +121,7 @@ cytra-gb/
 - **HTML5 Canvas**: Graphics rendering
 - **Local Storage API**: Save state persistence
 
-## 🔧 Development
+## Development
 
 ### Code Structure
 
@@ -168,80 +157,16 @@ while running {
 - **Total bundle**: ~148 KB (including React UI)
 - **Build time**: ~2-3 seconds for WASM core
 
-### Performance Optimizations
-
-- Compiled Rust for native-like performance
-- Zero-cost abstractions in Rust
-- Bounds-checked memory access (safe)
-- Direct canvas rendering
-- Minimal JavaScript overhead
-
-## Future Enhancements
-
-### High Priority
-- [ ] Fix runtime panic in WASM core
-- [ ] Full APU with Web Audio API
-- [ ] Improved ROM compatibility
-- [ ] Gamepad support
-- [ ] Better error handling and diagnostics
-
-### Medium Priority
-- [ ] Fast forward (2x, 4x)
-- [ ] Rewind functionality
-- [ ] Screenshot capture
-- [ ] Debugger interface
-- [ ] Performance profiler
-
-### Low Priority
-- [ ] CRT/LCD shader effects
-- [ ] Custom color palettes
-- [ ] Game Genie codes
-- [ ] Serial link (multiplayer)
-- [ ] Cloud save sync
-
-## Contributing
-
-Contributions are welcome! Areas that need work:
-
-1. **Bug Fixes**: Debug and fix the WASM runtime panic
-2. **Audio**: Implement full APU with Web Audio API
-3. **Compatibility**: Test and fix ROM compatibility issues
-4. **Features**: Fast forward, rewind, screenshots
-5. **Documentation**: Add technical architecture docs
-
-### How to Contribute
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Learning Resources
-
-- [Pan Docs](https://gbdev.io/pandocs/) - Comprehensive Game Boy reference
-- [The Ultimate Game Boy Talk](https://www.youtube.com/watch?v=HyzD8pNlpwI) - Excellent overview
-- [GB CPU Manual](http://marc.rawer.de/Gameboy/Docs/GBCPUman.pdf) - Instruction reference
-- [GB Dev Community](https://gbdev.io/) - Resources and forums
-
 ## License
 
 MIT License - See [LICENSE](LICENSE) file for details.
-
-This means you can:
-- ✅ Use commercially
-- ✅ Modify and distribute
-- ✅ Use privately
-- ✅ Sublicense
-
-Just include the original license and copyright notice.
 
 ## Legal Notice
 
 **Important**: CytraGB is an emulator, not a game distribution platform.
 
 - Emulators are legal
-- Downloading copyrighted ROMs without owning the game is **not legal**
+- Downloading copyrighted ROMs without owning the game is **not**
 - You must provide your own legally-obtained ROM files
 
 **Legal ways to obtain ROMs:**
@@ -251,24 +176,4 @@ Just include the original license and copyright notice.
 
 **Use responsibly and respect copyright laws.**
 
-## Acknowledgments
-
-- Game Boy emulation community for excellent documentation
-- Pan Docs contributors for comprehensive reference
-- Homebrew developers for test ROMs
-- All contributors to this project
-
-## 📧 Contact
-
-- GitHub Issues: For bug reports and feature requests
-- Discussions: For questions and general discussion
-
 ---
-
-<div align="center">
-
-**Made with ❤️ from Finland**
-
-[⬆ Back to Top](#cytra-gb-)
-
-</div>
