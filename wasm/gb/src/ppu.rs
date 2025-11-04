@@ -143,9 +143,8 @@ impl PPU {
             self.render_window(mmu, ly);
         }
 
-        // OBJ
-        // TEMPORARY: Disable sprites to isolate memory corruption
-        if false && lcdc & 0x02 != 0 {
+        // OBJ (re-enabled)
+        if lcdc & 0x02 != 0 {
             self.render_sprites(mmu, ly);
         }
     }
