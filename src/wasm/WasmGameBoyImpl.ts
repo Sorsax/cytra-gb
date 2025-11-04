@@ -9,6 +9,7 @@ export class WasmGameBoy {
   private memory!: WebAssembly.Memory;
   private fb!: Uint8Array;
   private lastTrace: string = '';
+  private disposed: boolean = false;
 
   static async create(): Promise<WasmGameBoy> {
     const instance = new WasmGameBoy();
@@ -36,13 +37,32 @@ export class WasmGameBoy {
   get screenWidth(): number { return this.mod.screen_width(); }
   get screenHeight(): number { return this.mod.screen_height(); }
 
-  loadROM(data: Uint8Array): void { this.core.load_rom(data); }
-  reset(): void { this.core.reset(); }
-  start(): void { this.core.start(); }
-  stop(): void { this.core.stop(); }
-  isRunning(): boolean { return this.core.is_running(); }
+  loadROM(data: Uint8Array): void {
+    if (!this.disposed) {
+      this.core.load_rom(data);
+      this.disposed = false; // Allow re-use after ROM load
+    }
+  }
+  reset(): void {
+    if (!this.disposed) this.core.reset();
+  }
+  start(): void {
+    if (!this.disposed) this.core.start();
+  }
+  stop(): void {
+    if (!this.disposed) this.core.stop();
+  }
+  isRunning(): boolean {
+    if (this.disposed) return false;
+    return this.core.is_running();
+  }
 
   runFrame(): boolean {
+    if (this.disposed) {
+      console.warn('Attempted to run frame on disposed GameBoy instance');
+      return false;
+    }
+
     try {
       const ready = this.core.run_frame();
       // Copy out latest framebuffer to keep a stable view for canvas
@@ -63,6 +83,8 @@ export class WasmGameBoy {
 
       return ready;
     } catch (e) {
+      // Mark as disposed to prevent further use
+      this.disposed = true;
       if (this.lastTrace) {
         console.error('CPU trace (last ops):\n' + this.lastTrace);
       }
