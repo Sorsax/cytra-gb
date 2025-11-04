@@ -41,12 +41,19 @@ impl PPU {
     #[inline]
     fn set_pixel_rgb(&mut self, ly: u8, x: usize, rgb: [u8; 3]) {
         let idx = (ly as usize * SCREEN_WIDTH + x) * 4;
-        if idx + 3 < self.frame_buffer.len() {
-            self.frame_buffer[idx] = rgb[0];
-            self.frame_buffer[idx + 1] = rgb[1];
-            self.frame_buffer[idx + 2] = rgb[2];
-            self.frame_buffer[idx + 3] = 255;
+        if idx + 3 >= self.frame_buffer.len() {
+            panic!(
+                "PPU framebuffer overflow: ly={}, x={}, idx={}, len={}",
+                ly,
+                x,
+                idx,
+                self.frame_buffer.len()
+            );
         }
+        self.frame_buffer[idx] = rgb[0];
+        self.frame_buffer[idx + 1] = rgb[1];
+        self.frame_buffer[idx + 2] = rgb[2];
+        self.frame_buffer[idx + 3] = 255;
     }
 
     // Step PPU; return true when a frame is ready
@@ -111,12 +118,19 @@ impl PPU {
         let line_start = ly as usize * SCREEN_WIDTH * 4;
         for x in 0..SCREEN_WIDTH {
             let offset = line_start + x * 4;
-            if offset + 3 < self.frame_buffer.len() {
-                self.frame_buffer[offset] = 255;
-                self.frame_buffer[offset + 1] = 255;
-                self.frame_buffer[offset + 2] = 255;
-                self.frame_buffer[offset + 3] = 255;
+            if offset + 3 >= self.frame_buffer.len() {
+                panic!(
+                    "PPU framebuffer clear overflow: ly={}, x={}, offset={}, len={}",
+                    ly,
+                    x,
+                    offset,
+                    self.frame_buffer.len()
+                );
             }
+            self.frame_buffer[offset] = 255;
+            self.frame_buffer[offset + 1] = 255;
+            self.frame_buffer[offset + 2] = 255;
+            self.frame_buffer[offset + 3] = 255;
         }
 
         // BG

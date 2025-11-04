@@ -8,6 +8,7 @@ export class WasmGameBoy {
   private core!: import('./pkg/cytra_gb_core').GameBoy;
   private memory!: WebAssembly.Memory;
   private fb!: Uint8Array;
+  private lastTrace: string = '';
 
   static async create(): Promise<WasmGameBoy> {
     const instance = new WasmGameBoy();
@@ -49,17 +50,22 @@ export class WasmGameBoy {
       const len = this.core.frame_buffer_len();
       const bytes = new Uint8Array(this.memory.buffer, ptr, len);
       this.fb.set(bytes);
+
+       // Snapshot opcode trace while the borrow is released
+       try {
+        const anyCore: any = this.core as any;
+        if (anyCore.dump_trace) {
+          this.lastTrace = anyCore.dump_trace();
+        }
+      } catch {
+        // Ignore trace failures; keep previous snapshot
+      }
+
       return ready;
     } catch (e) {
-      try {
-        // If tracing is available, dump recent instructions
-        const anyCore: any = this.core as any;
-        if (anyCore.enable_trace && anyCore.dump_trace) {
-          anyCore.enable_trace(true);
-          const trace = anyCore.dump_trace();
-          console.error('CPU trace (last ops):\n' + trace);
-        }
-      } catch {}
+      if (this.lastTrace) {
+        console.error('CPU trace (last ops):\n' + this.lastTrace);
+      }
       throw e;
     }
   }

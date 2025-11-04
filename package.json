@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "build:wasm": "wasm-pack build wasm/gb --target web --out-dir ../../src/wasm/pkg --release",
-    "build:wasm:debug": "wasm-pack build wasm/gb --target web --out-dir ../../src/wasm/pkg",
+  "build:wasm:debug": "wasm-pack build wasm/gb --target web --out-dir ../../src/wasm/pkg --dev",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
