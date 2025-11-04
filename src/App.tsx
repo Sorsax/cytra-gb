@@ -85,13 +85,7 @@ function App() {
       emulator.start();
       setIsRunning(true);
       animationFrameRef.current = requestAnimationFrame(emulationLoop);
-      
-      // Debug: Check emulator state after a moment
-      setTimeout(() => {
-        try { console.log('Emulator running:', emulator.isRunning()); } catch (e) { console.warn('isRunning() failed', e); }
-        console.log('PC:', (emulator as any).core?.get_pc?.());
-        console.log('LCDC:', (emulator as any).core?.get_lcdc?.());
-      }, 100);
+
     } catch (error) {
       console.error('Failed to load ROM:', error);
       alert('Failed to load ROM file');

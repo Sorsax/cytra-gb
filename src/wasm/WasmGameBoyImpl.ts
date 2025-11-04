@@ -21,8 +21,7 @@ export class WasmGameBoy {
     instance.memory = initOutput.memory;
     instance.mod = mod;
     instance.core = new mod.GameBoy();
-    // Enable opcode trace if available (debug aid)
-    try { (instance.core as any).enable_trace?.(true); } catch {}
+    // Note: avoid enabling opcode trace by default to reduce WASM allocations
     instance.refreshFrameBufferView();
     return instance;
   }
