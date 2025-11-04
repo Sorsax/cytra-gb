@@ -134,12 +134,13 @@ impl PPU {
         }
 
         // BG
-        if lcdc & 0x01 != 0 {
+        // TEMPORARY: Disable all rendering to isolate CPU vs PPU corruption
+        if false && lcdc & 0x01 != 0 {
             self.render_background(mmu, ly);
         }
 
         // WIN
-        if lcdc & 0x20 != 0 {
+        if false && lcdc & 0x20 != 0 {
             self.render_window(mmu, ly);
         }
 
