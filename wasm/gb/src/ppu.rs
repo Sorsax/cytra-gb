@@ -246,11 +246,11 @@ impl PPU {
         let lcdc = io[0x40];
         let wy = io[0x4a];
         let wx = io[0x4b];
-    let bgp = io[0x47];
-    let is_cgb = mmu.is_gbc();
-                    let mut tile_line = (y & 7) as u16;
-                    if yflip { tile_line = 7 - tile_line; }
-                    let tile_line_addr = (tile_line * 2) as u16;
+        let bgp = io[0x47];
+        let is_cgb = mmu.is_gbc();
+
+        if ly < wy {
+            return;
         }
 
         let tile_map_base: u16 = if lcdc & 0x40 != 0 { 0x9c00 } else { 0x9800 };
@@ -260,22 +260,20 @@ impl PPU {
         let window_y = ly - wy;
         let tile_y = ((window_y >> 3) & 31) as u16;
 
-                    let (byte1, byte2) = if is_cgb {
-                        (
-                            mmu.read_vram_bank_byte(base_addr + tile_line_addr, vram_bank),
-                            mmu.read_vram_bank_byte(base_addr + tile_line_addr + 1, vram_bank),
-                        )
-                    } else {
-                        (
-                            mmu.read_byte(base_addr + tile_line_addr),
-                            mmu.read_byte(base_addr + tile_line_addr + 1),
-                        )
-                    };
-            let mut attr = 0u8;
+        for x in 0..SCREEN_WIDTH {
+            let window_x = x as i16 - (wx as i16 - 7);
+            if window_x < 0 { continue; }
+            let window_x = window_x as u8;
+
+            let tile_x = ((window_x >> 3) & 31) as u16;
+            let tile_index = tile_y * 32 + tile_x;
+
+            let tile_num = mmu.read_byte(tile_map_base + tile_index);
             let mut vram_bank = 0usize;
             let mut xflip = false;
             let mut yflip = false;
             let mut palette_id = 0u8;
+            let mut attr = 0u8;
             if is_cgb {
                 attr = mmu.read_vram_bank_byte(tile_map_base + tile_index, 1);
                 vram_bank = ((attr >> 3) & 1) as usize;
