@@ -10,6 +10,7 @@ export class WasmGameBoy {
   private fb!: Uint8Array;
   private lastTrace: string = '';
   private disposed: boolean = false;
+  private traceFrameCounter: number = 0;
 
   static async create(): Promise<WasmGameBoy> {
     const instance = new WasmGameBoy();
@@ -87,11 +88,15 @@ export class WasmGameBoy {
       const bytes = new Uint8Array(this.memory.buffer, ptr, len);
       this.fb.set(bytes);
 
-       // Snapshot opcode trace while the borrow is released
-       try {
-        const anyCore: any = this.core as any;
-        if (anyCore.dump_trace) {
-          this.lastTrace = anyCore.dump_trace();
+      // Snapshot opcode trace infrequently to limit allocator pressure
+      // Never call into WASM on error path; only update snapshot during healthy frames
+      try {
+        this.traceFrameCounter = (this.traceFrameCounter + 1) % 60; // ~once per second at 60fps
+        if (this.traceFrameCounter === 0) {
+          const anyCore: any = this.core as any;
+          if (anyCore.dump_trace) {
+            this.lastTrace = anyCore.dump_trace();
+          }
         }
       } catch {
         // Ignore trace failures; keep previous snapshot

@@ -251,30 +251,40 @@ impl PPU {
         let sprite_height = if lcdc & 0x04 != 0 { 16 } else { 8 };
         let oam = mmu.get_oam();
 
-        // Collect sprites on this line
-    let mut sprites_on_line: Vec<(u8, usize)> = Vec::with_capacity(10);
-
+        // Collect sprites on this line into a small fixed buffer (avoid heap allocs)
+        let mut buf: [(u8, usize); 10] = [(0, 0); 10];
+        let mut count: usize = 0;
         for i in 0..40 {
             let sprite_y = oam[i * 4].wrapping_sub(16);
             if ly >= sprite_y && ly < sprite_y.wrapping_add(sprite_height) {
-                sprites_on_line.push((oam[i * 4 + 1], i));
-            }
-            if sprites_on_line.len() >= 10 {
-                break; // max 10/line
+                if count < 10 {
+                    buf[count] = (oam[i * 4 + 1], i);
+                    count += 1;
+                } else {
+                    break; // max 10/line
+                }
             }
         }
 
-        // Sort by X, then index
-        sprites_on_line.sort_by(|a, b| {
-            if a.0 == b.0 {
-                a.1.cmp(&b.1)
-            } else {
-                a.0.cmp(&b.0)
+        // Sort by X, then index (simple insertion sort for small fixed buffer)
+        for idx in 1..count {
+            let mut j = idx;
+            while j > 0 {
+                let a = buf[j - 1];
+                let b = buf[j];
+                if a.0 > b.0 || (a.0 == b.0 && a.1 > b.1) {
+                    buf[j - 1] = b;
+                    buf[j] = a;
+                    j -= 1;
+                } else {
+                    break;
+                }
             }
-        });
+        }
 
         // Render sprites
-        for (_, i) in sprites_on_line {
+        for n in 0..count {
+            let i = buf[n].1;
             let sprite_y = oam[i * 4].wrapping_sub(16);
             let sprite_x = oam[i * 4 + 1].wrapping_sub(8);
             let mut tile_num = oam[i * 4 + 2];
