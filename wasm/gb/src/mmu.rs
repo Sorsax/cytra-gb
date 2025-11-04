@@ -31,6 +31,8 @@ pub struct MMU {
     hdma_src: u16,
     hdma_dst: u16,
     hdma_remaining: u16, // bytes remaining
+    // Joypad state (active-low bits: 0=pressed)
+    joypad_buttons: u8,
 }
 
 impl MMU {
@@ -63,6 +65,7 @@ impl MMU {
             hdma_src: 0,
             hdma_dst: 0,
             hdma_remaining: 0,
+            joypad_buttons: 0xff,
         };
         mmu.reset();
         mmu
@@ -92,8 +95,10 @@ impl MMU {
         self.hdma_src = 0;
         self.hdma_dst = 0;
         self.hdma_remaining = 0;
+    self.joypad_buttons = 0xff;
 
         // IO defaults
+    self.io[0x00] = 0xCF; // JOYP: no group selected, upper bits 1
         self.io[0x05] = 0x00; self.io[0x06] = 0x00; self.io[0x07] = 0x00;
         self.io[0x10] = 0x80; self.io[0x11] = 0xbf; self.io[0x12] = 0xf3; self.io[0x14] = 0xbf;
         self.io[0x16] = 0x3f; self.io[0x17] = 0x00; self.io[0x19] = 0xbf;
@@ -258,8 +263,19 @@ impl MMU {
     fn read_io(&self, addr: usize) -> u8 {
         let offset = addr - 0xff00;
         if offset == 0x00 {
-            // JOYP: bits 6-7 are always 1 on DMG; bits 0-3 reflect keys, 4-5 are select
-            return 0xC0 | (self.io[0x00] & 0x3F);
+            // JOYP read is dynamic based on select lines and current button state
+            // Bits 6-7 read as 1; bits 4-5 are select lines; low nibble depends on selection
+            let joyp = self.io[0x00];
+            let mut value = 0xC0 | (joyp & 0x30) | 0x0F; // default: all released
+            if joyp & 0x10 == 0 {
+                // D-pad: Up/Down/Left/Right are bits 2/3/1/0 of upper nibble
+                value &= !((self.joypad_buttons >> 4) & 0x0F);
+            }
+            if joyp & 0x20 == 0 {
+                // Buttons: A/B/Select/Start are bits 0/1/2/3 of lower nibble
+                value &= !(self.joypad_buttons & 0x0F);
+            }
+            return value;
         }
         if self.is_gbc {
             if offset == 0x4f { return self.vram_bank as u8 | 0xfe; }
@@ -399,6 +415,17 @@ impl MMU {
     pub fn get_io(&self) -> &[u8] { &self.io }
     pub fn get_io_mut(&mut self) -> &mut [u8] { &mut self.io }
     pub fn is_gbc(&self) -> bool { self.is_gbc }
+
+    // Joypad updates from frontend
+    pub fn joypad_press(&mut self, bit: u8) {
+        self.joypad_buttons &= !(1 << bit);
+        // Request joypad interrupt when any button down (simplified)
+        self.io[0x0F] |= 0x10;
+    }
+
+    pub fn joypad_release(&mut self, bit: u8) {
+        self.joypad_buttons |= 1 << bit;
+    }
 
     // Perform one 16-byte HDMA chunk if active and in HBlank
     pub fn hdma_hblank_step(&mut self) {

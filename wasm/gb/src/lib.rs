@@ -1387,13 +1387,14 @@ impl GameBoy {
     }
 
     pub fn press_button(&mut self, bit: u8) {
+        // Update internal input model (optional) and MMU's joypad state
         self.input.press_button(bit);
-        self.input.update_joypad(self.mmu.get_io_mut());
+        self.mmu.joypad_press(bit);
     }
 
     pub fn release_button(&mut self, bit: u8) {
         self.input.release_button(bit);
-        self.input.update_joypad(self.mmu.get_io_mut());
+        self.mmu.joypad_release(bit);
     }
 
     pub fn get_pc(&self) -> u16 {
