@@ -128,6 +128,10 @@ impl GameBoy {
 
     fn step_cpu(&mut self) -> u32 {
         if self.halted {
+            // Check for pending interrupts even when halted
+            if self.check_interrupts().is_some() {
+                self.halted = false;
+            }
             return 4;
         }
 
@@ -138,6 +142,7 @@ impl GameBoy {
             self.ime_scheduled = false;
         }
 
+        // Only service interrupts if IME is enabled
         if self.ime {
             if let Some(interrupt) = self.check_interrupts() {
                 self.handle_interrupt(interrupt);
@@ -175,15 +180,22 @@ impl GameBoy {
         let if_ = self.mmu.read_byte(0xff0f);
         self.mmu.write_byte(0xff0f, if_ & !(1 << interrupt));
         let pc_before = self.registers.pc;
-    let ie = self.mmu.read_byte(0xffff);
-    self.last_interrupt = Some((interrupt, pc_before, ie, if_));
+        let ie = self.mmu.read_byte(0xffff);
+        self.last_interrupt = Some((interrupt, pc_before, ie, if_));
+        
+        // Guard against stack overflow during rapid interrupt loops
+        if self.registers.sp < 0x8100 {
+            // Stack has grown dangerously large; likely stuck in interrupt loop
+            // Don't service this interrupt; let the ROM recover
+            self.mmu.write_byte(0xff0f, 0); // Clear all IF flags
+            return;
+        }
+        
         self.push_word(self.registers.pc);
         let handlers = [0x40, 0x48, 0x50, 0x58, 0x60];
         self.registers.pc = handlers[interrupt as usize];
         self.cycles += 20;
-    }
-
-    fn fetch_byte(&mut self) -> u8 {
+    }    fn fetch_byte(&mut self) -> u8 {
         let byte = self.mmu.read_byte(self.registers.pc);
         self.registers.pc = self.registers.pc.wrapping_add(1);
         byte
@@ -1065,7 +1077,9 @@ impl GameBoy {
             }
             // 0xFF: RST 38H
             0xff => self.rst(0x38),
+            // Catch-all for undefined/illegal opcodes (should not normally be hit)
             _ => {
+                // Just NOP for illegal ops to avoid infinite loops
                 self.cycles += 4;
             }
         }
