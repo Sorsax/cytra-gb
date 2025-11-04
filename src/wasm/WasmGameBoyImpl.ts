@@ -18,6 +18,8 @@ export class WasmGameBoy {
     instance.memory = initOutput.memory;
     instance.mod = mod;
     instance.core = new mod.GameBoy();
+    // Enable opcode trace if available (debug aid)
+    try { (instance.core as any).enable_trace?.(true); } catch {}
     instance.refreshFrameBufferView();
     return instance;
   }
@@ -40,13 +42,26 @@ export class WasmGameBoy {
   isRunning(): boolean { return this.core.is_running(); }
 
   runFrame(): boolean {
-    const ready = this.core.run_frame();
-    // Copy out latest framebuffer to keep a stable view for canvas
-    const ptr = this.core.frame_buffer_ptr();
-    const len = this.core.frame_buffer_len();
-    const bytes = new Uint8Array(this.memory.buffer, ptr, len);
-    this.fb.set(bytes);
-    return ready;
+    try {
+      const ready = this.core.run_frame();
+      // Copy out latest framebuffer to keep a stable view for canvas
+      const ptr = this.core.frame_buffer_ptr();
+      const len = this.core.frame_buffer_len();
+      const bytes = new Uint8Array(this.memory.buffer, ptr, len);
+      this.fb.set(bytes);
+      return ready;
+    } catch (e) {
+      try {
+        // If tracing is available, dump recent instructions
+        const anyCore: any = this.core as any;
+        if (anyCore.enable_trace && anyCore.dump_trace) {
+          anyCore.enable_trace(true);
+          const trace = anyCore.dump_trace();
+          console.error('CPU trace (last ops):\n' + trace);
+        }
+      } catch {}
+      throw e;
+    }
   }
 
   getFrameBuffer(): Uint8Array { return this.fb; }

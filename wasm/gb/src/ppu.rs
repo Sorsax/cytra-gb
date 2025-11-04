@@ -233,7 +233,7 @@ impl PPU {
         let oam = mmu.get_oam();
 
         // Collect sprites on this line
-        let mut sprites_on_line: Vec<(u8, usize)> = Vec::new();
+    let mut sprites_on_line: Vec<(u8, usize)> = Vec::with_capacity(10);
 
         for i in 0..40 {
             let sprite_y = oam[i * 4].wrapping_sub(16);

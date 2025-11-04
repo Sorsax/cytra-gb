@@ -31,6 +31,10 @@ pub struct GameBoy {
     halted: bool,
     ime: bool,
     ime_scheduled: bool,
+    // Debug trace of last N opcodes
+    trace_enabled: bool,
+    trace_buf: [(u16, u8); 256],
+    trace_idx: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -64,6 +68,9 @@ impl GameBoy {
             halted: false,
             ime: false,
             ime_scheduled: false,
+            trace_enabled: false,
+            trace_buf: [(0, 0); 256],
+            trace_idx: 0,
         }
     }
 
@@ -133,7 +140,12 @@ impl GameBoy {
             }
         }
 
+        let pc_before = self.registers.pc;
         let opcode = self.fetch_byte();
+        if self.trace_enabled {
+            self.trace_buf[self.trace_idx & 0xff] = (pc_before, opcode);
+            self.trace_idx = self.trace_idx.wrapping_add(1);
+        }
         self.execute_opcode(opcode);
 
         self.cycles - cycles_before
@@ -1362,6 +1374,20 @@ impl GameBoy {
     
     pub fn get_lcdc(&self) -> u8 {
         self.mmu.get_io()[0x40]
+    }
+
+    // Debug controls
+    pub fn enable_trace(&mut self, enabled: bool) { self.trace_enabled = enabled; }
+
+    pub fn dump_trace(&self) -> String {
+        let mut out = String::new();
+        let start = self.trace_idx.min(256);
+        for i in 0..start {
+            let (pc, op) = self.trace_buf[(self.trace_idx.wrapping_sub(start - i)) & 0xff];
+            use std::fmt::Write as _;
+            let _ = write!(out, "{:04X}: {:02X}\n", pc, op);
+        }
+        out
     }
 
     pub fn save_state(&self) -> String {
